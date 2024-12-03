@@ -1,0 +1,20 @@
+key = { ASCII_ALPHA_LOWER+ ~ ("-" ~ ASCII_ALPHA_LOWER+)* }
+
+quoted_value = { "\"" ~ quoted_plain_value ~ "\"" }
+
+// this can contain quotes and spaces
+quoted_plain_value = {
+    (ASCII_ALPHANUMERIC | "\\\"" | " " | "~" | "!" | "@" | "#" | "$" | "%" | "^" | "&" | "*" | "(" | ")" | "_" | "+" | "`" | "-" | "=" | "[" | "]" | "{" | "}" | "|" | ";" | "'" | ":" | "," | "." | "/" | "<" | ">" | "?")+
+}
+
+plain_value = {
+    (ASCII_ALPHANUMERIC | "~" | "!" | "@" | "#" | "$" | "%" | "^" | "&" | "*" | "(" | ")" | "_" | "+" | "`" | "-" | "[" | "]" | "{" | "}" | "|" | ";" | "'" | ":" | "," | "." | "/" | "<" | ">" | "?")+
+}
+
+value = { quoted_value | plain_value }
+
+key_value = { key ~ "=" ~ value }
+
+item = { key_value | key }
+
+line = { SOI ~ (item ~ (" " ~ item)*) ~ EOI }

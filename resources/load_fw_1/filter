@@ -1,0 +1,23 @@
+input:
+  rules:
+{% for src_zone in zones %}
+  - action=jump jump-target=input-{{src_zone}} in-interface-list={{src_zone}}
+{%- endfor %}
+
+input-LAN:
+  rules:
+    - action=accept
+
+input-WAN:
+  rules: []
+
+orphan-chain:
+  rules: []
+
+output:
+  rules:
+    - action=accept
+
+forward:
+  rules:
+    - action=accept

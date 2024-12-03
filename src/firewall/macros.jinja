@@ -1,0 +1,49 @@
+{%- macro accept_snmp() -%}
+comment=SNMP action=accept dst-port=161 protocol=udp
+{%- endmacro %}
+
+{%- macro accept_proto(protocol) -%}
+action=accept protocol={{protocol}}
+{%- endmacro %} 
+
+{%- macro jump_to(target) -%}
+action=jump jump-target={{target}}
+{%- endmacro %}
+
+{%- macro log_passthrough(prefix, limit) -%}
+action=passthrough limit={{limit}} log=yes log-prefix="{{prefix}}"
+{%- endmacro %}
+
+{%- macro drop_broadcasts() -%}
+comment="Drop various broadcasts" action=drop dst-address-type=broadcast protocol=udp
+{%- endmacro %}
+
+{%- macro drop_invalid() -%}
+comment="drop invalid packets" action=drop connection-state=invalid
+{%- endmacro %}
+
+{%- macro log(name) -%}log=yes log-prefix="{{name}}"{%- endmacro %}
+
+{%- macro accept_dstnated() -%}
+comment="accept DSTNATed" action=accept connection-nat-state=dstnat
+{%- endmacro %}
+
+{%- macro accept_dns() -%}
+action=accept comment=DNS dst-port=53 protocol=udp
+{%- endmacro %}
+
+{%- macro accept_dhcp() -%} 
+action=accept comment=DHCP dst-port=67 protocol=udp 
+{%- endmacro %}
+
+{%- macro accept_ospf() -%}
+action=accept comment="allow OSPF" protocol=ospf
+{%- endmacro %}
+
+{%- macro accept_mikrotik_discovery() -%}
+comment="mikrotik discovery" action=accept dst-port=5678 protocol=udp
+{%- endmacro %}
+
+{%- macro accept_established_related() -%}
+comment="accept established,related" connection-state=established,related
+{%- endmacro %}

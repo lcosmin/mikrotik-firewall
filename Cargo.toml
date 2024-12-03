@@ -1,0 +1,33 @@
+[package]
+name = "mikrotik-firewall"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.86"
+clap = { version = "4.5.7", features = ["derive"] }
+derive_more = { version = "1.0.0", features = ["display"] }
+indexmap = "2.6.0"
+minijinja = { version = "2.0.2", features = ["custom_syntax", "json", "loader", "multi_template", "unicode"] }
+once_cell = "1.19.0"
+pest = "2.7.11"
+pest_derive = "2.7.11"
+regex = "1.11.1"
+serde = { version = "1.0.203", features = ["derive"] }
+serde_valid = "0.24.0"
+serde_yaml = "0.9.34"
+shlex = "1.3.0"
+slog-term = "2.9.1"
+tokio = { version = "1.39.2", features = ["full"] }
+tracing = "0.1.40"
+tracing-forest = { version = "0.1.6", features = ["full"] }
+tracing-subscriber = "0.3.18"
+
+[build-dependencies]
+cfgrammar = "0.13.7"
+lrlex = "0.13.7"
+lrpar = "0.13.7"
+
+[dev-dependencies]
+assert2 = "0.3.15"
+rstest = "0.23.0"
