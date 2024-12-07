@@ -1,6 +1,6 @@
 use anyhow::Result;
 
-use super::structures::{Firewall, Rule};
+use super::structures::{Firewall, Parameter, Rule};
 use super::utils::escape;
 
 /// Trait which defines the method for saving a firewall
@@ -35,10 +35,13 @@ impl FirewallSerializer for Mikrotik {
         }
 
         for arg in r.params.iter() {
-            if let Some(ref value) = arg.value {
-                let escaped_value = escape(value);
+            match arg {
+                Parameter::NoValue(name) => result.push(name.clone()),
+                Parameter::Value(name, value) => {
+                    let escaped_value = escape(value);
 
-                result.push(format!("{}={}", &arg.name, &escaped_value));
+                    result.push(format!("{}={}", &name, &escaped_value));
+                }
             }
         }
 

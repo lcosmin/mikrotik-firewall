@@ -76,18 +76,9 @@ impl Chain {
 /// A parameter for a [Rule]
 #[warn(unused)]
 #[derive(Clone, Debug, PartialEq)]
-pub struct Parameter {
-    pub name: String,
-    pub value: Option<String>,
-}
-
-impl Parameter {
-    pub fn new(name: &str, value: Option<&str>) -> Self {
-        Self {
-            name: name.to_string(),
-            value: value.map(|x| x.to_string()),
-        }
-    }
+pub enum Parameter {
+    NoValue(String),
+    Value(String, String),
 }
 
 /// Firewall rule
@@ -113,10 +104,9 @@ impl fmt::Display for Rule {
         }
 
         for p in self.params.iter() {
-            if let Some(ref value) = p.value {
-                items.push(format!("{}={}", &p.name, value));
-            } else {
-                items.push(p.name.clone());
+            match p {
+                Parameter::NoValue(name) => items.push(name.clone()),
+                Parameter::Value(name, value) => items.push(format!("{}={}", &name, &value)),
             }
         }
 
@@ -137,11 +127,11 @@ impl Rule {
 
         for tok in v.iter() {
             match tok {
-                Token::Key(k) => rule.params.push(Parameter::new(k, None)),
+                Token::Key(k) => rule.params.push(Parameter::NoValue(k.to_string())),
                 Token::KeyValue(k, v) => match *k {
                     "action" => rule.action = Some(Action::from_str(v)?),
                     "jump-target" => rule.jump_target = Some(v.to_string()),
-                    _ => rule.params.push(Parameter::new(k, Some(v))),
+                    _ => rule.params.push(Parameter::Value(k.to_string(), v.to_string())),
                 },
             }
         }
@@ -186,11 +176,15 @@ impl Rule {
         // of functions for is_disabled and such , and they get updated when a param
         // is added ?
         for p in self.params.iter() {
-            if p.name != "disabled" {
-                continue;
-            }
-            if let Some(ref v) = p.value {
-                return v == "yes";
+
+            match p {
+                Parameter::NoValue(_) => {},
+                Parameter::Value(ref name, ref value) => {
+                    if name != "disabled" {
+                        continue
+                    }
+                    return value == "yes";
+                }
             }
         }
 
@@ -227,7 +221,17 @@ impl Rule {
     pub fn has_meaningful_params(&self) -> bool {
         self.params
             .iter()
-            .any(|x| x.name != "comment" && x.name != "chain")
+            .any(|x| {
+                match x {
+                    Parameter::NoValue(_) => true,
+                    Parameter::Value(name, _) => {
+                        match name.as_str() {
+                            "comment"| "chain" => false,
+                            _ => true,
+                        }
+                    }
+                }
+            })
     }
 }
 
@@ -389,18 +393,9 @@ mod tests {
         check!(
             rule.params
                 == vec![
-                    Parameter {
-                        name: "foo".to_string(),
-                        value: Some("bar".to_string()),
-                    },
-                    Parameter {
-                        name: "fuu".to_string(),
-                        value: Some("baz".to_string()),
-                    },
-                    Parameter {
-                        name: "keya".to_string(),
-                        value: None,
-                    }
+                    Parameter::Value("foo".to_string(), "bar".to_string()),
+                    Parameter::Value("fuu".to_string(), "baz".to_string()),
+                    Parameter::NoValue("keya".to_string()),
                 ]
         );
 
@@ -437,18 +432,6 @@ mod tests {
         check!(ch.len() == 1);
 
         check!(ch.rules[0] == log_rule);
-    }
-
-    #[rstest]
-    fn test_parameter() {
-        let p = Parameter::new("name", None);
-
-        check!(p.name == "name");
-        check!(p.value.is_none());
-
-        let p = Parameter::new("name", Some("value"));
-        check!(p.name == "name");
-        check!(p.value.is_some() && p.value.unwrap() == "value");
     }
 
     #[rstest]
