@@ -91,26 +91,11 @@ pub struct Rule {
 
 impl fmt::Display for Rule {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let mut items: Vec<String> = Vec::new();
+        let serialized = Mikrotik::new()
+            .serialize_rule(&self)
+            .map_err(|_| fmt::Error)?;
 
-        if let Some(ref action) = self.action {
-            items.push(format!("action={}", action.as_str()));
-        } else {
-            items.push("action=n/a".to_string());
-        }
-
-        if let Some(ref jump_target) = self.jump_target {
-            items.push(format!("jump-target={}", jump_target));
-        }
-
-        for p in self.params.iter() {
-            match p {
-                Parameter::NoValue(name) => items.push(name.clone()),
-                Parameter::Value(name, value) => items.push(format!("{}={}", &name, &value)),
-            }
-        }
-
-        write!(f, "{}", items.join(" "))?;
+        write!(f, "{}", serialized)?;
 
         Ok(())
     }
