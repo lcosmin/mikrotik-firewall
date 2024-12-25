@@ -34,6 +34,12 @@ impl FirewallSerializer for Mikrotik {
             result.push(format!("jump-target={}", jump_target));
         }
 
+        // Write the disabled flag, if any
+        match r.disabled {
+            None | Some(false) => {}
+            Some(true) => result.push("disabled=yes".to_string()),
+        }
+
         for arg in r.params.iter() {
             match arg {
                 Parameter::NoValue(name) => result.push(name.clone()),
