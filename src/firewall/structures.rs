@@ -1,4 +1,5 @@
 use super::parser::{tokenize_rule_line, Token};
+use super::saver::{FirewallSerializer, Mikrotik};
 use super::structures;
 
 use anyhow::{anyhow, Result};
@@ -86,6 +87,7 @@ pub enum Parameter {
 pub struct Rule {
     pub action: Option<Action>,
     pub jump_target: Option<String>,
+    pub disabled: Option<bool>,
     pub params: Vec<Parameter>, // TODO: should be a map to avoid duplicates; also for fast searching
 }
 
@@ -108,16 +110,15 @@ impl Rule {
             action: None,
             jump_target: None,
             params: Vec::new(),
+            disabled: None,
         };
 
         for tok in v.iter() {
             match tok {
-                Token::Key(k) => rule.params.push(Parameter::NoValue(k.to_string())),
-                Token::KeyValue(k, v) => match *k {
-                    "action" => rule.action = Some(Action::from_str(v)?),
-                    "jump-target" => rule.jump_target = Some(v.to_string()),
-                    _ => rule.params.push(Parameter::Value(k.to_string(), v.to_string())),
-                },
+                Token::Key(k) => rule.add_parameter(Parameter::NoValue(k.to_string()))?,
+                Token::KeyValue(k, v) => {
+                    rule.add_parameter(Parameter::Value(k.to_string(), v.to_string()))?
+                }
             }
         }
 
@@ -125,25 +126,74 @@ impl Rule {
     }
 
     pub fn from_str(s: &str) -> Result<Self> {
-
         let tokens = tokenize_rule_line(s)?;
-  
+
         // ...compile the rule
         structures::Rule::from_tokens(&tokens)
     }
 
+    fn add_action(&mut self, action: Action) -> Result<()> {
+        if self.action.is_some() {
+            // Already have an action, it's an error to have two
+            Err(anyhow!("rule action already set"))
+        } else {
+            self.action = Some(action);
+            Ok(())
+        }
+    }
+
+    fn add_jump_target(&mut self, jump_target: String) -> Result<()> {
+        if self.jump_target.is_some() {
+            // Already have a jump target, it's an error to have two
+            Err(anyhow!("rule jump target already set"))
+        } else {
+            self.jump_target = Some(jump_target);
+            Ok(())
+        }
+    }
+
+    fn set_is_disabled(&mut self, disabled: bool) -> Result<()> {
+        if self.disabled.is_some() {
+            // Already have a jump target, it's an error to have two
+            Err(anyhow!("rule already has 'disabled' set"))
+        } else {
+            self.disabled = Some(disabled);
+            Ok(())
+        }
+    }
+
+    pub fn add_parameter(&mut self, p: Parameter) -> Result<()> {
+        match &p {
+            Parameter::NoValue(_) => {
+                self.params.push(p);
+            }
+            Parameter::Value(key, value) => match key.as_str() {
+                "action" => self.add_action(Action::from_str(value)?)?,
+                "jump-target" => self.add_jump_target(value.clone())?,
+                "disabled" => self.set_is_disabled(value == "yes")?,
+                _ => {
+                    self.params.push(p);
+                }
+            },
+        }
+
+        Ok(())
+    }
+
     /// Checks if the rule is valid
     pub fn is_valid(&self) -> bool {
-        // TODO: put this in `from_tokens` ?
-        // TODO: make it `validate() -> Result<()>` to return a more comprehensive error about why
-        // it's invalid?
+        // Perform validation
+
         if let Some(ref act) = self.action {
             if *act == Action::Jump && self.jump_target.is_none() {
                 return false;
             }
             return true;
         }
-        false // must have an action
+        false
+
+        // TODO: put this in `from_tokens` ?
+        // TODO: make it `validate() -> Result<()>` to return a more comprehensive error about why
     }
 
     /// Checks if this rule is a jump rule
@@ -157,23 +207,7 @@ impl Rule {
     }
 
     pub fn is_disabled(&self) -> bool {
-        // TODO: add methods for adding parameters to a rule and use bools instead
-        // of functions for is_disabled and such , and they get updated when a param
-        // is added ?
-        for p in self.params.iter() {
-
-            match p {
-                Parameter::NoValue(_) => {},
-                Parameter::Value(ref name, ref value) => {
-                    if name != "disabled" {
-                        continue
-                    }
-                    return value == "yes";
-                }
-            }
-        }
-
-        false
+        self.disabled.unwrap_or(false)
     }
 
     /// Checks if the rule is a return without any condition
@@ -194,7 +228,7 @@ impl Rule {
                 | Action::Passthrough
                 | Action::AddSrcToAddressList
                 // jump is not final because flow can return there
-                | Action::Jump      
+                | Action::Jump
                 | Action::AddDstToAddressList => false,
                 _ => true,
             };
@@ -204,22 +238,17 @@ impl Rule {
 
     /// Checks if the rule has any meaningful parameters, i.e. other than comments
     pub fn has_meaningful_params(&self) -> bool {
-        self.params
-            .iter()
-            .any(|x| {
-                match x {
-                    Parameter::NoValue(_) => true,
-                    Parameter::Value(name, _) => {
-                        match name.as_str() {
-                            "comment"| "chain" => false,
-                            _ => true,
-                        }
-                    }
-                }
-            })
+        self.params.iter().any(|x| match x {
+            Parameter::NoValue(_) => true,
+            Parameter::Value(name, _) => match name.as_str() {
+                "comment" | "chain" => false,
+                _ => true,
+            },
+        })
     }
 }
 
+#[cfg(test)]
 impl FromStr for Rule {
     type Err = anyhow::Error;
 
@@ -332,22 +361,43 @@ mod tests {
     use std::str::FromStr;
 
     #[test]
-    fn test_rules() {
+    fn test_rule_with_two_actions() {
         // Invalid: Jump rule with no target
-        let rule = Rule::from_str("action=jump").unwrap();
-
-        println!("rule: {:?}", &rule);
+        let rule = Rule::from_str("action=accept action=drop").unwrap();
 
         check!(rule.action.is_some());
         check!(!rule.is_valid());
-        check!(!rule.is_final_action());        
+        check!(!rule.is_final_action());
+    }
 
+    #[test]
+    fn test_jump_rule_with_no_target() {
+        // Invalid: Jump rule with no target
+        let rule = Rule::from_str("action=jump").unwrap();
+
+        check!(rule.action.is_some());
+        check!(!rule.is_valid());
+        check!(!rule.is_final_action());
+    }
+
+    #[test]
+    fn test_jump_rule_with_two_targets() {
+        // Invalid: Jump rule with no target
+        let rule = Rule::from_str("action=jump jump-target=foo jump-target=bar").unwrap();
+
+        check!(rule.action.is_some());
+        check!(!rule.is_valid());
+        check!(!rule.is_final_action());
+    }
+
+    #[test]
+    fn test_rules() {
         // Invalid: A rule with no action
         let rule = Rule::from_str("in-interface-list=LAN").unwrap();
 
         check!(rule.action.is_none());
         check!(!rule.is_valid());
-        check!(format!("{}", rule) == "action=n/a in-interface-list=LAN");
+        check!(format!("{}", rule) == "in-interface-list=LAN");
         check!(!rule.is_jump());
         check!(!rule.is_final_action());
 
