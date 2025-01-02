@@ -6,13 +6,15 @@ use anyhow::{anyhow, Result};
 use minijinja::context;
 use tracing::{debug, error, info};
 
-use crate::firewall::structures::Policy;
+use crate::firewall::policies::Policy;
 
 use super::config_files::{self, ConfigFile};
 use super::parser;
-use super::structures::{Chain, Firewall, Policies, Table, Tables, Zones};
 use super::templates::Jinja;
-use super::utils::valid_chain_name;
+use super::{
+    chains::ChainBuilder, firewalls::Firewall, policies::Policies, tables::Table,
+    tables::TableBuilder, tables::Tables, zones::Zones,
+};
 
 fn load_zones(cfg: &ConfigFile) -> Result<Zones> {
     let mut zones = Zones::new();
@@ -104,7 +106,7 @@ pub fn load(path: &PathBuf) -> Result<Firewall> {
     //
     // Load all zones defined in the file
     //
-    let zones = load_zones(&cfg).map_err(|e| anyhow!("error loading zones from config: {}", e))?;
+    let zones = load_zones(&cfg).map_err(|e| anyhow!(" zones from config: {}", e))?;
 
     //
     // Load policies
@@ -177,7 +179,7 @@ fn compile_fw_table(
     m: &serde_yaml::Mapping,
     policies: &Policies,
 ) -> Result<Table> {
-    let mut table = Table::new();
+    let mut tb = TableBuilder::new().name(name)?;
 
     // TODO: have a statistics object which collects which policies haven't been used, among other things
 
@@ -186,24 +188,19 @@ fn compile_fw_table(
     // A firewall table contains multiple chains as a mapping; iterate and
     // convert them to the internal structures
     for (k, v) in m.iter() {
-        let chain_name = k.as_str().unwrap().to_string();
+        let chain_name = k.as_str().unwrap();
 
-        // Validate chain name
-        if !valid_chain_name(&chain_name) {
-            return Err(anyhow!("invalid chain name '{}'", chain_name));
-        }
+        let mut chain_builder = ChainBuilder::new().name(chain_name)?;
 
         let ch: config_files::Chain = serde_yaml::from_value(v.clone()).expect("process chain");
 
         // traverse the chain's rules, convert them to internals::Rule, apply the chain's policy, if any
         // then apply the regular policy
 
-        let mut chain = Chain::new(&chain_name);
-
         for r in ch.rules.iter() {
             // Add chain rules
             let rule = parser::expand_string_and_parse_rule(jinja, None, r)?;
-            chain.add_rule(rule);
+            chain_builder = chain_builder.rule(rule);
         }
 
         // Add the chain's policy, if it's defined in the file
@@ -212,25 +209,26 @@ fn compile_fw_table(
 
             for p in policy.iter() {
                 let rule = parser::expand_string_and_parse_rule(jinja, None, p)?;
-                chain.add_rule(rule);
+                chain_builder = chain_builder.rule(rule);
             }
-        } else if let Some(policy) = policies.get(&chain_name) {
+        } else if let Some(policy) = policies.get(chain_name) {
             // Add the chain's policy, if any is defined in the configuration file
             debug!(target: "compile-table", "adding default policy for chain '{}'", &chain_name);
 
-            for rule in policy.rules.iter() {
-                chain.add_rule(rule.clone())
-            }
+            chain_builder = policy
+                .rules
+                .iter()
+                .fold(chain_builder, |cb, rule| cb.rule(rule.clone()));
         } else {
             debug!(target: "compile-table", "no default policy for chain '{}'", &chain_name);
         }
 
-        table.chains.insert(chain_name.clone(), chain);
+        tb = tb.chain(chain_builder.build()?);
 
         debug!(target: "compile-table", "[{}] added chain {:?}", &name, chain_name);
     }
 
-    Ok(table)
+    Ok(tb.build()?)
 }
 
 #[cfg(test)]

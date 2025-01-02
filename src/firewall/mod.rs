@@ -1,11 +1,15 @@
+mod actions;
+mod chains;
 mod config_files;
+mod firewalls;
 pub mod loader;
-pub mod optimizer;
 mod parser;
-pub mod saver;
-mod structures;
+mod policies;
+mod rules;
+mod tables;
 mod templates;
 mod utils;
+mod zones;
 
 #[cfg(test)]
 mod testing;

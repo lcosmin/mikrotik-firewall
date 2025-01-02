@@ -1,6 +1,5 @@
 use anyhow::Result;
 use clap::{self, Parser};
-use firewall::saver::FirewallSerializer;
 use std::path::PathBuf;
 use tracing::{error, info};
 use tracing_subscriber::fmt;
@@ -42,7 +41,7 @@ fn start(args: Args) -> Result<()> {
     // };
 
     // Create the firewall
-    let mut fw = firewall::loader::load(&args.firewall).map_err(|e| {
+    let fw = firewall::loader::load(&args.firewall).map_err(|e| {
         let msg = format!("load firewall: {:?}", &e.root_cause());
         e.context(msg)
     })?;
@@ -54,28 +53,16 @@ fn start(args: Args) -> Result<()> {
     if args.build {
         info!("building firewall");
 
-        // if args.debug {
-        //     fw.dump();
-        // }
-
-        let s = saver::Mikrotik::new();
-        let serialized = s.serialize(&fw)?;
-
-        info!("{}", serialized);
-
-        info!("optimizing...");
-
-        firewall::optimizer::optimize(&mut fw);
-
         if args.debug {
             fw.dump();
         }
 
-        use firewall::saver;
-        let s = saver::Mikrotik::new();
-        let serialized = s.serialize(&fw)?;
+        info!("optimizing...");
+        let optimized = fw.optimize()?;
 
-        info!("{}", serialized);
+        let serialized = optimized.serialize()?;
+
+        info!("{}", serialized.join("\n"));
     }
     Ok(())
 }
