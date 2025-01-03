@@ -21,7 +21,7 @@ pub struct Rule {
     pub disabled: Option<bool>,
     pub params: Vec<Parameter>, // TODO: should be a map to avoid duplicates; also for fast searching
 
-    _has_meaningful_params: bool,
+    _has_matchers: bool,        // Rule has matcher conditions (e.g. match on a specific TCP port)
 }
 
 impl fmt::Display for Rule {
@@ -49,7 +49,6 @@ impl Rule {
     /// Checks if the rule is a return without any condition
     pub fn is_return(&self) -> bool {
         if let Some(ref act) = self.action {
-            // Action is return and there are no meaningful parameters
             return *act == Action::Return;
         }
         false
@@ -58,7 +57,7 @@ impl Rule {
     /// Returns true if this action causes the packet to stop traversing the
     /// current chain
     pub fn is_final(&self) -> bool {
-        if self.has_conditions() {
+        if self.has_matchers() {
             return false;
         }
 
@@ -78,11 +77,11 @@ impl Rule {
         false
     }
 
-    /// Checks if the rule has any meaningful parameters which can condition when a rule
-    /// is applied. At the moment, only chain and comment are considered meaningless parameters.
+    /// Checks if the rule has any conditions which can condition when a rule
+    /// is applied.
     // TODO: improve meaningless parameters
-    pub fn has_conditions(&self) -> bool {
-        return self._has_meaningful_params;
+    pub fn has_matchers(&self) -> bool {
+        return self._has_matchers;
     }
 
     pub fn serialize(&self) -> Result<String> {
@@ -123,7 +122,7 @@ impl Rule {
 /// A builder for `Rule` objects
 pub struct RuleBuilder {
     params: Vec<Parameter>,
-    _has_conditions: bool,
+    _has_matchers: bool,
 }
 
 impl RuleBuilder {
@@ -131,7 +130,7 @@ impl RuleBuilder {
     pub fn new() -> Self {
         RuleBuilder {
             params: vec![],
-            _has_conditions: false,
+            _has_matchers: false,
         }
     }
 
@@ -170,10 +169,10 @@ impl RuleBuilder {
     pub fn parameter(self, p: Parameter) -> Self {
         let mut params = self.params;
 
-        // Determine if this is a meaningful parameter; this is a parameter which
-        // can alter the evaluation of the rule by conditioning it, e.g. accept
-        // a packet when the destination port is 123 vs accept a packet.
-        let has_conditions = self._has_conditions
+        // Determine if this parameter is a matcher, i.e. one that 
+        // specifies that this rule should match on a certain condition,
+        //  e.g. accept a packet when the destination port is 123.
+        let has_conditions = self._has_matchers
             || match &p {
                 Parameter::NoValue(_) => true,
                 Parameter::Value(name, _) => match name.as_str() {
@@ -187,7 +186,7 @@ impl RuleBuilder {
 
         Self {
             params: params,
-            _has_conditions: has_conditions,
+            _has_matchers: has_conditions,
         }
     }
 
@@ -197,7 +196,7 @@ impl RuleBuilder {
             params: vec![],
             jump_target: None,
             disabled: None,
-            _has_meaningful_params: self._has_conditions,
+            _has_matchers: self._has_matchers,
         };
 
         for p in self.params.iter() {
@@ -297,7 +296,7 @@ mod tests {
     fn test_rule_with_various_parameters() -> Result<()> {
         let rule = RuleBuilder::from_str("action=accept foo=ba/r fuu=ba;z keya")?.build()?;
 
-        check!(rule.has_conditions());
+        check!(rule.has_matchers());
         check!(
             rule.params
                 == vec![
@@ -405,5 +404,20 @@ mod tests {
         check!(rule.is_final() == outcome_conditional);
 
         Ok(())
+    }
+
+
+    #[test]
+    fn test_has_matchers() -> Result<()> {
+        let rule = RuleBuilder::from_str("action=accept comment=hi chain=input log=yes log-prefix=bla")?.build()?;
+
+        check!(rule.has_matchers() == false);
+
+        let rule = RuleBuilder::from_str("action=accept comment=hi chain=input log=yes log-prefix=bla protocol=tcp")?.build()?;
+
+        check!(rule.has_matchers() == true);
+
+        Ok(())
+        
     }
 }

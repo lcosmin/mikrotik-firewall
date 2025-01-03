@@ -59,9 +59,9 @@ impl Chain {
 
             new_chain = new_chain.rule(rule.clone());
 
-            // All the following optimizations happen if the current rule is unconditional,
-            // i.e. it doesn't have any meaningful parameters which can condition its evaluation
-            if rule.has_conditions() {
+            // All the following optimizations happen if the current rule doesn't have 
+            // any matchers
+            if rule.has_matchers() {
                 continue;
             }
 
@@ -74,8 +74,8 @@ impl Chain {
                 break;
             }
 
-            // If a rule is final (i.e. accepts/rejects/etc. the traffic) and the action is not
-            // conditioned by any parameters, then stop building the chain with the rest of the rules.
+            // If a rule is final (i.e. accepts/rejects/etc. the traffic) and it doesn't 
+            // have matchers, then stop adding any following rules.
             if rule.is_final() {
                 if !iter_rules.peek().is_none() {
                     // Issue this message only if the point at which the chain is
@@ -161,14 +161,14 @@ impl ChainBuilder {
             }
 
             // Detect if the chain has an unconditional return. This means that the first
-            // meaningful rule is a return
-            if rule.is_return() && !rule.has_conditions() && !cb.has_meaningful_rules {
+            // rule with matchers is a return
+            if rule.is_return() && !rule.has_matchers() && !cb.has_meaningful_rules {
                 cb.returns_unconditionally = true;
             }
 
-            // If this rule has conditions, then mark the whole chain as having (at least) a 
+            // If this rule has matcher(s), then mark the whole chain as having (at least) a 
             // meaningful rule
-            if rule.has_conditions() {
+            if rule.has_matchers() {
                 cb.has_meaningful_rules = true;
             }
         }
