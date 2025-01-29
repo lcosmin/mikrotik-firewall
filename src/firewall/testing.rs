@@ -1,7 +1,6 @@
 use crate::firewall::rules::{Rule, RuleBuilder};
 use rstest::fixture;
 use std::path::PathBuf;
-use std::str::FromStr;
 
 use super::templates::Jinja;
 

@@ -1,31 +1,14 @@
-use super::{policies::Policies, tables::Tables, zones::Zones};
+use super::tables::Tables;
+
 use anyhow::Result;
-use tracing::debug;
 
 #[derive(Debug)]
 pub struct Firewall {
-    pub(crate) zones: Zones,
-    pub(crate) policies: Policies,
-    pub(crate) tables: Tables,
+    pub tables: Tables,
 }
 
 impl Firewall {
     /// Create a firewall from the specified path (reads and processes files stored there)
-
-    pub fn dump(&self) {
-        debug!(target: "fw-dump",
-            "{} zones, {} tables",
-            self.zones.len(),
-            self.tables.len()
-        );
-
-        debug!(target: "fw-dump", "zones: {:?}", &self.zones);
-
-        // Dump each table
-
-        debug!(target: "fw-dump", "tables: {:?}", self.serialize().unwrap());
-    }
-
     pub fn optimize(self) -> Result<Self> {
         let mut new_tables = Tables::new();
 

@@ -1,27 +1,30 @@
 use super::utils::escape;
 use crate::firewall::actions::Action;
 use crate::firewall::parser::{tokenize_rule_line, Token};
+use serde::Serialize;
 use std::fmt;
 use std::str::FromStr;
 
 use anyhow::{anyhow, Result};
 
 /// A parameter for a [Rule]
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
 pub enum Parameter {
-    NoValue(String),            // FIXME: is this possible in the firewall part ?
+    NoValue(String), // FIXME: is it possible to have no value parameters for firewall commands?
     Value(String, String),
 }
 
 /// Firewall rule
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct Rule {
-    pub action: Option<Action>,
+    pub action: Action,
     pub jump_target: Option<String>,
     pub disabled: Option<bool>,
     pub params: Vec<Parameter>, // TODO: should be a map to avoid duplicates; also for fast searching
 
-    _has_matchers: bool,        // Rule has matcher conditions (e.g. match on a specific TCP port)
+    _has_matchers: bool, // Rule has matcher conditions (e.g. match on a specific TCP port)
+    _has_side_effects: bool, // Rule has some sort of logging side effect (i.e. log=yes)
+    _has_action: bool,   // for detecting duplicate action= in rules
 }
 
 impl fmt::Display for Rule {
@@ -38,20 +41,12 @@ impl Rule {
 
     /// Checks if this rule is a jump rule
     pub fn is_jump(&self) -> bool {
-        if let Some(ref act) = self.action {
-            if *act == Action::Jump {
-                return true;
-            }
-        }
-        false
+        self.action == Action::Jump
     }
 
-    /// Checks if the rule is a return without any condition
+    /// Returns true if the rule has an Action::Return
     pub fn is_return(&self) -> bool {
-        if let Some(ref act) = self.action {
-            return *act == Action::Return;
-        }
-        false
+        self.action == Action::Return
     }
 
     /// Returns true if this action causes the packet to stop traversing the
@@ -61,10 +56,9 @@ impl Rule {
             return false;
         }
 
-        if let Some(ref act) = self.action {
-            return match act {
+        match self.action {
                 Action::Log
-                | Action::AddDstToAddressList 
+                | Action::AddDstToAddressList
                 | Action::AddSrcToAddressList
                 | Action::Passthrough
                 // jump is not final because flow can return
@@ -72,26 +66,24 @@ impl Rule {
                 _ => {
                     true
                 }
-            };
         }
-        false
     }
 
     /// Checks if the rule has any conditions which can condition when a rule
     /// is applied.
-    // TODO: improve meaningless parameters
     pub fn has_matchers(&self) -> bool {
-        return self._has_matchers;
+        self._has_matchers
     }
 
+    pub fn has_side_effects(&self) -> bool {
+        self._has_side_effects
+    }
     pub fn serialize(&self) -> Result<String> {
         // preallocate a maximum possible size for the result vector
         let mut result: Vec<String> = Vec::with_capacity(self.params.len() + 2);
 
         // Write the action
-        if let Some(ref action) = self.action {
-            result.push(format!("action={}", action.as_str()));
-        }
+        result.push(format!("action={}", self.action.as_str()));
 
         // Write the jump-target, if any
         if let Some(ref jump_target) = self.jump_target {
@@ -123,6 +115,7 @@ impl Rule {
 pub struct RuleBuilder {
     params: Vec<Parameter>,
     _has_matchers: bool,
+    _has_side_effects: bool,
 }
 
 impl RuleBuilder {
@@ -131,6 +124,7 @@ impl RuleBuilder {
         RuleBuilder {
             params: vec![],
             _has_matchers: false,
+            _has_side_effects: false,
         }
     }
 
@@ -147,9 +141,6 @@ impl RuleBuilder {
     /// Returns an error if the given token vector is invalid
     pub fn from_tokens<'a>(v: &Vec<Token<'a>>) -> Result<Self> {
         let mut rule_builder = RuleBuilder::new();
-
-        // TODO: add validation for parameters, i.e. know which can appear standalone and which
-        // has a value
 
         for tok in v.iter() {
             match tok {
@@ -168,35 +159,46 @@ impl RuleBuilder {
 
     pub fn parameter(self, p: Parameter) -> Self {
         let mut params = self.params;
+        let mut has_matchers = self._has_matchers;
+        let mut has_side_effects = self._has_side_effects;
 
-        // Determine if this parameter is a matcher, i.e. one that 
-        // specifies that this rule should match on a certain condition,
-        //  e.g. accept a packet when the destination port is 123.
-        let has_conditions = self._has_matchers
-            || match &p {
-                Parameter::NoValue(_) => true,
-                Parameter::Value(name, _) => match name.as_str() {
-                    // known parameters which don't influence the rule evaluation
-                    "comment" | "chain" | "action" | "jump-target" => false,
-                    _ => true,
-                },
-            };
+        match &p {
+            Parameter::NoValue(_) => {
+                has_matchers |= true;
+            }
+            Parameter::Value(name, value) => {
+                match name.as_str() {
+                    "comment" | "chain" | "action" | "jump-target" => {
+                        // these don't count as matchers nor side effects
+                    }
+                    "log" => {
+                        has_side_effects |= value.as_str() == "yes";
+                    }
+                    _ => {
+                        has_matchers |= true;
+                    }
+                }
+            }
+        }
 
         params.push(p);
 
         Self {
             params: params,
-            _has_matchers: has_conditions,
+            _has_matchers: has_matchers,
+            _has_side_effects: has_side_effects,
         }
     }
 
     pub fn build(&self) -> Result<Rule> {
         let mut rule = Rule {
-            action: None,
+            action: Action::Accept,
             params: vec![],
             jump_target: None,
             disabled: None,
             _has_matchers: self._has_matchers,
+            _has_side_effects: self._has_side_effects,
+            _has_action: false,
         };
 
         for p in self.params.iter() {
@@ -205,10 +207,13 @@ impl RuleBuilder {
                 Parameter::Value(key, value) => match key.as_str() {
                     "action" => {
                         let act = Action::from_str(value)?;
-                        match rule.action {
-                            None => rule.action = Some(act),
-                            Some(_) => return Err(anyhow!("duplicate action in rule")),
+
+                        if rule._has_action {
+                            return Err(anyhow!("duplicate action in rule"));
                         }
+
+                        rule._has_action = true;
+                        rule.action = act;
                     }
                     "jump-target" => match rule.jump_target {
                         // FIXME: validate value
@@ -224,15 +229,12 @@ impl RuleBuilder {
         }
 
         // Sanity check: have action
-        match rule.action {
-            None =>
-            // There can be rules with no actions, e.g. "chain=input comment=hello"
-            { /*return Err(anyhow!("rule has no action"))*/ }
-            Some(ref act) => {
-                // Sanity check: action is jump && have jump target
-                if *act == Action::Jump && rule.jump_target.is_none() {
-                    return Err(anyhow!("rule is jump but has no jump target"));
-                }
+        if !rule._has_action {
+            rule.action = Action::Accept;
+        } else {
+            // Sanity check: action is jump && have jump target
+            if rule.action == Action::Jump && rule.jump_target.is_none() {
+                return Err(anyhow!("rule is jump but has no jump target"));
             }
         }
 
@@ -252,9 +254,7 @@ mod tests {
     #[test]
     fn test_rule_with_no_action() -> Result<()> {
         let rule = RuleBuilder::from_str("in-interface-list=LAN")?.build()?;
-
-        check!(rule.action.is_none());
-
+        check!(rule.action == Action::Accept);
         Ok(())
     }
 
@@ -329,7 +329,6 @@ mod tests {
 
         check!(rule.serialize()? == "action=jump jump-target=input-CHAIN");
 
-
         check!(!RuleBuilder::from_str("action=accept")?.build()?.is_jump());
 
         Ok(())
@@ -341,7 +340,6 @@ mod tests {
 
         check!(rule.action == Some(Action::Return));
         check!(rule.is_return());
-
 
         let rule = RuleBuilder::from_str("action=accept")?.build()?;
         check!(!rule.is_return());
@@ -406,18 +404,38 @@ mod tests {
         Ok(())
     }
 
-
     #[test]
     fn test_has_matchers() -> Result<()> {
-        let rule = RuleBuilder::from_str("action=accept comment=hi chain=input log=yes log-prefix=bla")?.build()?;
+        let rule = RuleBuilder::from_str("action=accept comment=hi chain=input")?.build()?;
 
         check!(rule.has_matchers() == false);
 
-        let rule = RuleBuilder::from_str("action=accept comment=hi chain=input log=yes log-prefix=bla protocol=tcp")?.build()?;
+        let rule =
+            RuleBuilder::from_str("action=accept comment=hi chain=input log=yes")?.build()?;
+
+        check!(rule.has_matchers() == false);
+
+        let rule =
+            RuleBuilder::from_str("action=accept comment=hi chain=input protocol=tcp")?.build()?;
 
         check!(rule.has_matchers() == true);
 
         Ok(())
-        
+    }
+
+    #[test]
+    fn test_has_side_effects() -> Result<()> {
+        let rule = RuleBuilder::from_str("action=accept comment=hi chain=input")?.build()?;
+        check!(rule.has_side_effects() == false);
+
+        let rule =
+            RuleBuilder::from_str("action=accept comment=hi chain=input protocol=tcp")?.build()?;
+        check!(rule.has_side_effects() == false);
+
+        let rule =
+            RuleBuilder::from_str("action=accept comment=hi chain=input log=yes")?.build()?;
+        check!(rule.has_side_effects() == true);
+
+        Ok(())
     }
 }

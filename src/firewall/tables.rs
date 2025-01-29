@@ -34,6 +34,8 @@ impl Table {
 
         let mut new_tb = TableBuilder::new().name(&self.name).unwrap();
 
+        let log_target = format!("[table {}]", &self.name);
+
         // FIXME: revamp debug messages
 
         //
@@ -43,23 +45,16 @@ impl Table {
         //  - mark the ones that return immediately
         //  - record final chains and pass them the second stage optimization
         //
-        debug!(target: "optimize", "optimizing chains...");
+        debug!(target: "optimize-table", "{} optimizing table", &log_target);
 
         let mut final_chains = HashSet::new();
 
         for (_, chain) in self.chains.into_iter() {
-            let chain = chain.optimize(None);
+            let chain = chain.optimize(None, None);
 
             // Test for empty chains
             if chain.is_empty() {
-                debug!(target: "optimize", "found empty chain '{}'", &chain.name);
-                chains_to_remove.insert(chain.name.clone());
-                continue;
-            }
-
-            // Test for chain that immediately returns
-            if chain.returns_unconditionally() {
-                debug!(target: "optimize", "chain '{}' returns immediately", &chain.name);
+                debug!(target: "optimize-table", "{} found empty chain '{}'", &log_target, &chain.name);
                 chains_to_remove.insert(chain.name.clone());
                 continue;
             }
@@ -75,7 +70,7 @@ impl Table {
 
         // Pass 2:
         // - create new table
-        // - optimize chain again, to remove rules after jumping to a final chains
+        // - optimize chain again, to remove rules after jumping to a final chain
         // - find and remove any references to chains removed at step 1
 
         let mut new_tb = TableBuilder::new().name(&table.name).unwrap();
@@ -86,7 +81,7 @@ impl Table {
 
             // Optimize again, now knowing which chains are final (i.e. they don't return
             // to the caller); rules following jumps to such chains will be removed.
-            let chain = chain.optimize(Some(&final_chains));
+            let chain = chain.optimize(Some(&final_chains), Some(&chains_to_remove));
 
             for rule in chain.rules.into_iter() {
                 if rule.is_jump() {
@@ -94,7 +89,8 @@ impl Table {
 
                     // References a removed chain? If so, remove this rule (chain doesn't exist anymore)
                     if chains_to_remove.contains(jump_target) {
-                        debug!(target: "optimize", "[chain {}] removing rule that jumps to removed chain: {}", 
+                        debug!(target: "optimize-table", "{} removing rule that jumps to removed chain {}: {}", 
+                        &log_target,
                         &chain.name, rule);
                         continue;
                     }
@@ -169,3 +165,6 @@ impl TableBuilder {
 }
 
 // FIXME: add tests for tables
+
+#[cfg(test)]
+mod tests {}

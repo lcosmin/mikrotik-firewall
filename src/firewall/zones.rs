@@ -1,3 +1,3 @@
-use std::collections::HashSet;
+use indexmap::IndexSet;
 
-pub type Zones = HashSet<String>;
+pub type Zones = IndexSet<String>;

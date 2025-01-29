@@ -1,5 +1,7 @@
 use anyhow::Result;
 use clap::{self, Parser};
+use std::fs;
+use std::io::Write;
 use std::path::PathBuf;
 use tracing::{error, info};
 use tracing_subscriber::fmt;
@@ -40,29 +42,27 @@ fn start(args: Args) -> Result<()> {
     //     output: PathBuf::from_str("foo")?,
     // };
 
-    // Create the firewall
-    let fw = firewall::loader::load(&args.firewall).map_err(|e| {
-        let msg = format!("load firewall: {:?}", &e.root_cause());
-        e.context(msg)
-    })?;
+    // Load the firewall
 
-    //fw.test()?;
-
-    //return Ok(());
+    let fw = firewall::loader::FirewallLoader::load(&args.firewall)?;
 
     if args.build {
         info!("building firewall");
-
-        if args.debug {
-            fw.dump();
-        }
 
         info!("optimizing...");
         let optimized = fw.optimize()?;
 
         let serialized = optimized.serialize()?;
 
-        info!("{}", serialized.join("\n"));
+        let mut f = fs::File::create(&args.output)?;
+
+        let fw_code = serialized.join("\n");
+
+        f.write_all(fw_code.as_bytes())?;
+
+        info!("{}", &fw_code);
+
+        f.sync_all()?;
     }
     Ok(())
 }

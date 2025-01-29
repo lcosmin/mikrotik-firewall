@@ -1,9 +1,10 @@
 use anyhow::anyhow;
+use serde::Serialize;
 use std::str::FromStr;
 
 // FIXME: action notrack for raw chains
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub enum Action {
     Accept,
     Drop,
@@ -16,6 +17,12 @@ pub enum Action {
     AddSrcToAddressList,
     Jump,
     Reject,
+    // TODO: don't allow these actions to be used in every chain ?
+    // mangle table actions
+    MarkConnection,
+    MarkPacket,
+    // raw table actions
+    NoTrack,
 }
 
 impl Action {
@@ -32,6 +39,9 @@ impl Action {
             Action::AddSrcToAddressList => "add-src-to-address-list",
             Action::Jump => "jump",
             Action::Reject => "reject",
+            Action::MarkConnection => "mark-connection",
+            Action::MarkPacket => "mark-packet",
+            Action::NoTrack => "no-track",
         }
     }
 }
@@ -51,6 +61,9 @@ impl FromStr for Action {
             "add-src-to-address-list" => Ok(Action::AddSrcToAddressList),
             "jump" => Ok(Action::Jump),
             "reject" => Ok(Action::Reject),
+            "mark-connection" => Ok(Action::MarkConnection),
+            "mark-packet" => Ok(Action::MarkPacket),
+            "no-track" => Ok(Action::NoTrack),
             _ => Err(anyhow!("unexpected action: {}", s)),
         }
     }
@@ -77,6 +90,9 @@ mod tests {
     #[case("add-src-to-address-list", Some(Action::AddSrcToAddressList))]
     #[case("jump", Some(Action::Jump))]
     #[case("reject", Some(Action::Reject))]
+    #[case("mark-connection", Some(Action::MarkConnection))]
+    #[case("mark-packet", Some(Action::MarkPacket))]
+    #[case("no-track", Some(Action::NoTrack))]
     #[case("unknown", None)]
     fn test_action(#[case] name: &str, #[case] value: Option<Action>) {
         if value.is_some() {
