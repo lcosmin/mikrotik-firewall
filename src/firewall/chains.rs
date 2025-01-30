@@ -67,7 +67,7 @@ impl Chain {
                     new_chain = new_chain.rule(rule.clone());
                 } else if !is_last_rule {
                     // FIXME: improve logging, maybe log all removed rules following the point of truncation?
-                    debug!(target: "optimize-chain", "{} truncating chain because of unconditional return rule: {}", 
+                    debug!(target: "optimize-chain", "{} truncating chain because of unconditional return rule: {}",
                     &log_target, rule);
                 }
                 break;
@@ -79,7 +79,7 @@ impl Chain {
                 if let Some(ref to_remove) = removed_chains {
                     let target = rule.jump_target.as_ref().unwrap();
                     if to_remove.contains(target) {
-                        debug!(target: "optimize-chain", "{} skipping jump rule to removed chain '{}'", 
+                        debug!(target: "optimize-chain", "{} skipping jump rule to removed chain '{}'",
                         &log_target,
                         &target);
                         continue;
@@ -117,7 +117,7 @@ impl Chain {
                     if fc.contains(target) {
                         // If a rule jumps to a final chain (one that doesn't return), then everything following
                         // the rule can be removed
-                        debug!(target: "optimize-chain", 
+                        debug!(target: "optimize-chain",
                         "{} detected jump to final chain '{}': {}", &log_target, &target, rule);
                         break;
                     }
@@ -230,28 +230,6 @@ mod tests {
     4) optimize chain by removing rules which jump to empty chains
 
     */
-
-    #[test]
-    fn test_removal_of_rules_with_no_action() -> Result<()> {
-        let chain = ChainBuilder::new()
-            .name("test")?
-            .rule(RuleBuilder::from_str("protocol=tcp")?.build()?)
-            .rule(RuleBuilder::from_str("action=drop")?.build()?)
-            .rule(RuleBuilder::from_str("protocol=udp")?.build()?)
-            .build()?;
-
-        check!(chain.len() == 3);
-
-        let chain = chain.optimize(None, None);
-
-        check!(chain.is_final());
-        check!(chain.len() == 1);
-
-        let act = chain.rules[0].action.as_ref().unwrap();
-        check!(*act == Action::Drop);
-
-        Ok(())
-    }
 
     #[test]
     fn test_truncation_of_chain_at_final_action() -> Result<()> {

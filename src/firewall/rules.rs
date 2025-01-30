@@ -323,7 +323,7 @@ mod tests {
     #[test]
     fn test_jump_rule() -> Result<()> {
         let rule = RuleBuilder::from_str("action=jump jump-target=input-CHAIN")?.build()?;
-        check!(rule.action == Some(Action::Jump));
+        check!(rule.action == Action::Jump);
         check!(rule.is_jump());
         check!(rule.jump_target == Some("input-CHAIN".to_string()));
 
@@ -338,7 +338,7 @@ mod tests {
     fn test_return_rule() -> Result<()> {
         let rule = RuleBuilder::from_str("action=return")?.build()?;
 
-        check!(rule.action == Some(Action::Return));
+        check!(rule.action == Action::Return);
         check!(rule.is_return());
 
         let rule = RuleBuilder::from_str("action=accept")?.build()?;
@@ -352,7 +352,7 @@ mod tests {
         let rule = RuleBuilder::from_str("action=log disabled=yes")?.build()?;
 
         check!(rule.is_disabled());
-        check!(rule.action == Some(Action::Log));
+        check!(rule.action == Action::Log);
 
         check!(rule.serialize()? == "action=log disabled=yes");
 
