@@ -18,16 +18,9 @@ pub struct ConfigZone {
     pub name: String,
 }
 
-#[derive(Deserialize, Debug)]
-pub struct ConfigOptions {
-    // Rules which apply for templated "from" -> "to" rules when from == to
-    pub same_zone_policy: Option<Vec<String>>,
-}
-
 #[derive(Debug, Deserialize)]
 pub struct ConfigFile {
-    pub options: ConfigOptions,
-    pub zones: Vec<ConfigZone>,
+    pub zones: Option<Vec<ConfigZone>>,
     pub policies: Vec<ConfigPolicy>,
 }
 

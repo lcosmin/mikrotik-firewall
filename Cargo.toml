@@ -8,6 +8,7 @@ anyhow = "1.0.86"
 clap = { version = "4.5.7", features = ["derive"] }
 derive_more = { version = "1.0.0", features = ["display"] }
 indexmap = "2.6.0"
+itertools = "0.14.0"
 minijinja = { version = "2.0.2", features = ["custom_syntax", "json", "loader", "multi_template", "unicode"] }
 once_cell = "1.19.0"
 pest = "2.7.11"

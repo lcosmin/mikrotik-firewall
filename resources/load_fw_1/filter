@@ -1,7 +1,9 @@
 input:
+  policy:
+    - action=accept
   rules:
 {% for src_zone in zones %}
-  - action=jump jump-target=input-{{src_zone}} in-interface-list={{src_zone}}
+    - action=jump jump-target=input-{{src_zone}} in-interface-list={{src_zone}}
 {%- endfor %}
 
 input-LAN:
@@ -20,4 +22,4 @@ output:
 
 forward:
   rules:
-    - action=accept
+    - action=accept log=yes
